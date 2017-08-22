@@ -396,10 +396,36 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
             geoNotification["transitionType"].int = transitionType
             
             if geoNotification["notification"].exists() {
+                sendTransitionToServer(geoNotification)
                 notifyAbout(geoNotification)
             }
 
             NotificationCenter.default.post(name: NSNotification.Name(rawValue: "handleTransition"), object: geoNotification.rawString(String.Encoding.utf8, options: []))
+        }
+    }
+
+
+    func sendTransitionToServer(geo: JSON) {
+        log("Sending transition info to server")
+
+        let url = NSURL(string: "http://localhost:9004")!
+        let session = NSURLSession.sharedSession()
+        let request = NSMutableURLRequest(URL: url)
+
+        do {
+            request.HTTPMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.HTTPBody = geo["notification"]["data"]
+
+            let task = session.dataTaskWithRequest(request, completionHandler: { (_, response, error) -> Void in
+                print("Got response \(response) with error \(error)")
+                print("Done.")
+            })
+
+            task.resume()
+
+        } catch {
+            print("error")
         }
     }
 
