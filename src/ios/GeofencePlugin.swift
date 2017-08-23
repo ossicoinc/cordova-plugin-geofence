@@ -396,7 +396,6 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
             geoNotification["transitionType"].int = transitionType
             
             if geoNotification["notification"].exists() {
-                log("uhhh")
                 sendTransitionToServer(geoNotification)
                 notifyAbout(geoNotification)
             }
@@ -409,7 +408,8 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
     func sendTransitionToServer(_ geo: JSON) {
         log("Sending transition info to server")
 
-        let url = URL(string: "http://192.168.45.231:9004/test/")!
+        let urlString = geo["serverURL"]
+        let url = URL(string: urlString)!
         let session = URLSession.shared
         var request = URLRequest(url: url)
 
@@ -418,13 +418,12 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             let jsonData = geo["notification"]["data"] as JSON
             let json: [String: String] = [
-                "body": jsonData.rawString(String.Encoding.utf8)!
+                "geofenceInfoString": jsonData.rawString(String.Encoding.utf8)!
             ]
             request.httpBody = try? JSONSerialization.data(withJSONObject: json, options: .prettyPrinted)
             
             let task = session.dataTask(with: request, completionHandler: { (_, response, error) -> Void in
-                print("Got response \(response) with error \(error)")
-                print("Done.")
+                print("Response from server: \(response), errors: \(error)")
             })
 
             task.resume()
