@@ -397,7 +397,7 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
             
             if geoNotification["notification"].exists() {
                 sendTransitionToServer(geoNotification)
-                if !geoNotification["sendNotification"].bool {
+                if !geoNotification["sendNotification"].bool! {
                     notifyAbout(geoNotification)
                 }
             }
