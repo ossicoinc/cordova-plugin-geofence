@@ -397,7 +397,7 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
             
             if geoNotification["notification"].exists() {
                 sendTransitionToServer(geoNotification)
-                if !geoNotification["sendNotification"].bool! {
+                if let sendNotification = geoNotification["sendNotification"].bool, sendNotification {
                     notifyAbout(geoNotification)
                 }
             }
@@ -407,7 +407,7 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
     }
 
     func sendTransitionToServer(_ geo: JSON) {
-        log("Sending transition info to server")
+        log("Sending transition info to server \(geo)")
 
         let urlString = geo["serverURL"].string
         let url = URL(string: urlString!)!
