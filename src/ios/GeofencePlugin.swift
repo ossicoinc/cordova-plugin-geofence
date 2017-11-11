@@ -240,6 +240,7 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
     func registerPermissions() {
         if iOS8 {
             locationManager.requestAlwaysAuthorization()
+            locationManager.startMonitoringSignificantLocationChanges()
         }
     }
 
