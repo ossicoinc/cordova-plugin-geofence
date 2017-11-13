@@ -128,9 +128,6 @@
             <array>
                 <string>remote-notification</string>
             </array>
-            <array>
-                <string>location</string>
-            </array>
         </config-file>
         <config-file target="config.xml" parent="/*">
           <feature name="GeofencePlugin">
