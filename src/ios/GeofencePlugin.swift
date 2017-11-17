@@ -240,8 +240,7 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
     func registerPermissions() {
         if iOS8 {
             locationManager.requestAlwaysAuthorization()
-//            locationManager.startMonitoringSignificantLocationChanges()
-            locationManager.startUpdatingLocation()
+            locationManager.startMonitoringSignificantLocationChanges()
         }
     }
 
@@ -355,12 +354,12 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         log("update location")
-        if let path = Bundle.main.path(forResource: "Info", ofType: "plist"), let dict = NSDictionary(contentsOfFile: path) as? [String: AnyObject] {
-            let value = dict["Location Update URL"] as! String
-            print(value)
-        }
-
-        let urlString = "http://192.168.45.198:7000/rpc/geo_ping"
+//        if let path = Bundle.main.path(forResource: "Info", ofType: "plist"), let dict = NSDictionary(contentsOfFile: path) as? [String: AnyObject] {
+//            let value = dict["Location Update URL"] as! String
+//            print(value)
+//        }
+        
+        let urlString = "http://10.0.1.17:7000/rpc/geo_ping"
         if let url = URL(string: urlString) {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
@@ -368,10 +367,24 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
             let jsonData: JSON = ["location": ["latitude": locations.first?.coordinate.latitude, "longitude": locations.first?.coordinate.longitude]]
             request.httpBody = try! jsonData.rawData()
             
-            let task = URLSession.shared.dataTask(with: request, completionHandler: { (_, response, error) -> Void in
-                print("Response from server: \(response), errors: \(error)")
+            let task = URLSession.shared.dataTask(with: request, completionHandler: { (data, response, error) -> Void in
+                guard error == nil else {
+                    print("Error: ", error!)
+                    return
+                }
+                
+                if let data = data {
+                    DispatchQueue.global().async {
+                        self.removeAllGeoNotifications()
+                        let geoFencesJson = JSON(data: data)
+                        log("JSON: \(geoFencesJson)")
+                        for geoFenceJson in geoFencesJson {
+                            log("\(geoFenceJson.1)")
+                            self.addOrUpdateGeoNotification(geoFenceJson.1)
+                        }
+                    }
+                }
             })
-            
             task.resume()
         }
     }
