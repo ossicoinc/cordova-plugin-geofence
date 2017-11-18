@@ -89,6 +89,17 @@ func log(_ messages: [String]) {
         commandDelegate!.send(pluginResult, callbackId: command.callbackId)
     }
 
+    func saveMetaData(_ command: CDVInvokedUrlCommand) {
+        log("Saving metadata")
+        log("\(command.arguments)")
+        for arg in command.arguments {
+            let data = JSON(arg)
+            log("\(data)")
+        }
+        let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK)
+        commandDelegate!.send(pluginResult, callbackId: command.callbackId)
+    }
+
     func promptForNotificationPermission() {
         UIApplication.shared.registerUserNotificationSettings(UIUserNotificationSettings(
             types: [UIUserNotificationType.sound, UIUserNotificationType.alert, UIUserNotificationType.badge],
