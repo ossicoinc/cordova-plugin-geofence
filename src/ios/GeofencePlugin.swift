@@ -97,14 +97,14 @@ let defaults = UserDefaults.standard
             if let arg = command.arguments?.first {
                 let data = JSON(arg)
                 log("\(data)")
-                if let test = data["uid"].string {
-                    defaults.set(test, forKey: "uid")
+                if let uid = data["uid"].string {
+                    defaults.set(uid, forKey: "uid")
                 }
-                if let test = data["geoTransitionURL"].string {
-                    defaults.set(test, forKey: "geoTransitionURL")
+                if let geoTransitionURL = data["geoTransitionURL"].string {
+                    defaults.set(geoTransitionURL, forKey: "geoTransitionURL")
                 }
-                if let test = data["locationUpdateURL"].string {
-                    defaults.set(test, forKey: "locationUpdateURL")
+                if let locationUpdateURL = data["locationUpdateURL"].string {
+                    defaults.set(locationUpdateURL, forKey: "locationUpdateURL")
                 }
             }
            
