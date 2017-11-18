@@ -112,7 +112,7 @@ module.exports = {
     * @return {Promise}
     */
     saveMetaData: function (data, success, error) {
-        return execPromise(success, error, "GeofencePlugin", "saveMetaData", data);
+        return execPromise(success, error, "GeofencePlugin", "saveMetaData", [data]);
     }
 };
 
