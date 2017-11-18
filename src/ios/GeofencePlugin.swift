@@ -25,6 +25,7 @@ func log(_ messages: [String]) {
     }
 }
 
+let defaults = UserDefaults.standard
 
 @available(iOS 8.0, *)
 @objc(HWPGeofencePlugin) class GeofencePlugin : CDVPlugin {
@@ -90,14 +91,28 @@ func log(_ messages: [String]) {
     }
 
     func saveMetaData(_ command: CDVInvokedUrlCommand) {
-        log("Saving metadata")
-        log("\(command.arguments)")
-        for arg in command.arguments {
-            let data = JSON(arg)
-            log("\(data)")
+        DispatchQueue.global(qos: priority).async {
+            log("Saving metadata")
+            log("\(command.arguments)")
+            if let arg = command.arguments?.first {
+                let data = JSON(arg)
+                log("\(data)")
+                if let test = data["uid"].string {
+                    defaults.set(test, forKey: "uid")
+                }
+                if let test = data["geoTransitionURL"].string {
+                    defaults.set(test, forKey: "geoTransitionURL")
+                }
+                if let test = data["locationUpdateURL"].string {
+                    defaults.set(test, forKey: "locationUpdateURL")
+                }
+            }
+           
+            DispatchQueue.main.async {
+                let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK)
+                self.commandDelegate!.send(pluginResult, callbackId: command.callbackId)
+            }
         }
-        let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK)
-        commandDelegate!.send(pluginResult, callbackId: command.callbackId)
     }
 
     func promptForNotificationPermission() {
@@ -365,17 +380,15 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         log("update location")
-//        if let path = Bundle.main.path(forResource: "Info", ofType: "plist"), let dict = NSDictionary(contentsOfFile: path) as? [String: AnyObject] {
-//            let value = dict["Location Update URL"] as! String
-//            print(value)
-//        }
+        guard let urlString = defaults.string(forKey: "locationUpdateURL"), let uid = defaults.string(forKey: "uid") else {
+            return
+        }
         
-        let urlString = "http://10.0.1.17:7000/rpc/geo_ping"
         if let url = URL(string: urlString) {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            let jsonData: JSON = ["location": ["latitude": locations.first?.coordinate.latitude, "longitude": locations.first?.coordinate.longitude]]
+            let jsonData: JSON = ["location": ["latitude": locations.first?.coordinate.latitude, "longitude": locations.first?.coordinate.longitude], "user_id": uid]
             request.httpBody = try! jsonData.rawData()
             
             let task = URLSession.shared.dataTask(with: request, completionHandler: { (data, response, error) -> Void in
@@ -453,9 +466,11 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
 
     func sendTransitionToServer(_ geo: JSON) {
         log("Sending transition info to server \(geo)")
-
-        let urlString = geo["serverURL"].string
-        let url = URL(string: urlString!)!
+        guard let urlString = defaults.string(forKey: "geoTransitionURL") else {
+            return
+        }
+        
+        let url = URL(string: urlString)!
         let session = URLSession.shared
         var request = URLRequest(url: url)
 
