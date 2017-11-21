@@ -100,6 +100,19 @@ module.exports = {
      */
     ping: function (success, error) {
         return execPromise(success, error, "GeofencePlugin", "ping", []);
+    },
+    /**
+    * Save meta data
+    *
+    * @name saveMetaData
+    * @param {Object} data
+    * @param {Function} success callback
+    * @param {Function} error callback
+    *
+    * @return {Promise}
+    */
+    saveMetaData: function (data, success, error) {
+        return execPromise(success, error, "GeofencePlugin", "saveMetaData", [data]);
     }
 };
 
