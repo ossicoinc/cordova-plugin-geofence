@@ -266,6 +266,9 @@ class GeofenceFaker {
 
     func registerPermissions() {
         if iOS8 {
+            locationManager.stopUpdatingLocation()
+            locationManager.stopMonitoringSignificantLocationChanges()
+            
             locationManager.requestAlwaysAuthorization()
             locationManager.startMonitoringSignificantLocationChanges()
         }
@@ -389,7 +392,7 @@ class GeofenceFaker {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            let jsonData: JSON = ["location": ["latitude": locations.first?.coordinate.latitude, "longitude": locations.first?.coordinate.longitude], "user_id": uid]
+            let jsonData: JSON = ["location": ["latitude": locations.last?.coordinate.latitude, "longitude": locations.first?.coordinate.longitude], "user_id": uid]
             request.httpBody = try! jsonData.rawData()
             
             let task = URLSession.shared.dataTask(with: request, completionHandler: { (data, response, error) -> Void in
