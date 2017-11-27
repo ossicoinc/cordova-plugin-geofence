@@ -29,7 +29,7 @@ let defaults = UserDefaults.standard
 
 @available(iOS 8.0, *)
 @objc(HWPGeofencePlugin) class GeofencePlugin : CDVPlugin {
-    lazy var geoNotificationManager = GeoNotificationManager()
+    lazy var geoNotificationManager = GeoNotificationManager.sharedInstance
     let priority = DispatchQoS.QoSClass.default
 
     override func pluginInitialize () {
@@ -57,7 +57,7 @@ let defaults = UserDefaults.standard
             promptForNotificationPermission()
         }
 
-        geoNotificationManager = GeoNotificationManager()
+        geoNotificationManager = GeoNotificationManager.sharedInstance
         geoNotificationManager.registerPermissions()
 
         let (ok, warnings, errors) = geoNotificationManager.checkRequirements()
@@ -107,7 +107,7 @@ let defaults = UserDefaults.standard
                     defaults.set(locationUpdateURL, forKey: "locationUpdateURL")
                 }
             }
-           
+
             DispatchQueue.main.async {
                 let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK)
                 self.commandDelegate!.send(pluginResult, callbackId: command.callbackId)
@@ -218,7 +218,7 @@ class GeofenceFaker {
     }
 
     func start() {
-         DispatchQueue.global(qos: priority).async {
+        DispatchQueue.global(qos: priority).async {
             while (true) {
                 log("FAKER")
                 let notify = arc4random_uniform(4)
@@ -243,7 +243,7 @@ class GeofenceFaker {
                 }
                 Thread.sleep(forTimeInterval: 3)
             }
-         }
+        }
     }
 
     func stop() {
@@ -252,11 +252,20 @@ class GeofenceFaker {
 }
 
 @available(iOS 8.0, *)
-class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
+@objc class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
+    static let sharedInstance = GeoNotificationManager()
     let locationManager = CLLocationManager()
     let store = GeoNotificationStore()
-
-    override init() {
+    
+    lazy var dateJSONFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+        formatter.timeZone = NSTimeZone(forSecondsFromGMT: 0) as TimeZone!
+        formatter.locale = NSLocale(localeIdentifier: "en_US_POSIX") as Locale!
+        return formatter
+    }()
+    
+    private override init() {
         log("GeoNotificationManager init")
         super.init()
         locationManager.delegate = self
@@ -265,6 +274,9 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
 
     func registerPermissions() {
         if iOS8 {
+            locationManager.stopUpdatingLocation()
+            locationManager.stopMonitoringSignificantLocationChanges()
+            
             locationManager.requestAlwaysAuthorization()
             locationManager.startMonitoringSignificantLocationChanges()
         }
@@ -383,33 +395,37 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
         guard let urlString = defaults.string(forKey: "locationUpdateURL"), let uid = defaults.string(forKey: "uid") else {
             return
         }
-        
+
         if let url = URL(string: urlString) {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            let jsonData: JSON = ["location": ["latitude": locations.first?.coordinate.latitude, "longitude": locations.first?.coordinate.longitude], "user_id": uid]
-            request.httpBody = try! jsonData.rawData()
-            
-            let task = URLSession.shared.dataTask(with: request, completionHandler: { (data, response, error) -> Void in
-                guard error == nil else {
-                    print("Error: ", error!)
-                    return
-                }
+            if let lastLocation = locations.last {
+                let timestampString = dateJSONFormatter.string(from: lastLocation.timestamp)
+                let jsonData: JSON = ["location": ["latitude": lastLocation.coordinate.latitude, "longitude": lastLocation.coordinate.longitude], "user_id": uid, "speed": lastLocation.speed, "direction": lastLocation.course, "altitude": lastLocation.altitude, "horizontal_accuracy": lastLocation.horizontalAccuracy, "vertical_accuracy": lastLocation.verticalAccuracy, "timestamp": timestampString]
                 
-                if let data = data {
-                    DispatchQueue.global().async {
-                        self.removeAllGeoNotifications()
-                        let geoFencesJson = JSON(data: data)
-                        log("JSON: \(geoFencesJson)")
-                        for geoFenceJson in geoFencesJson {
-                            log("\(geoFenceJson.1)")
-                            self.addOrUpdateGeoNotification(geoFenceJson.1)
+                request.httpBody = try! jsonData.rawData()
+                
+                let task = URLSession.shared.dataTask(with: request, completionHandler: { (data, response, error) -> Void in
+                    guard error == nil else {
+                        print("Error: ", error!)
+                        return
+                    }
+                    
+                    if let data = data {
+                        DispatchQueue.global().async {
+                            self.removeAllGeoNotifications()
+                            let geoFencesJson = JSON(data: data)
+                            log("JSON: \(geoFencesJson)")
+                            for geoFenceJson in geoFencesJson {
+                                log("\(geoFenceJson.1)")
+                                self.addOrUpdateGeoNotification(geoFenceJson.1)
+                            }
                         }
                     }
-                }
-            })
-            task.resume()
+                })
+                task.resume()
+            }
         }
     }
 
@@ -489,7 +505,6 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
             })
 
             task.resume()
-
         } catch {
             print("error")
         }
