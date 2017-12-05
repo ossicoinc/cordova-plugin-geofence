@@ -395,12 +395,13 @@ class GeofenceFaker {
     
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
         log("changed authorization status")
+        guard status != .notDetermined else {
+            return
+        }
         var statusDescription = ""
         if (status == .denied) {
-            // The user denied authorization
             statusDescription = "Denied"
         } else if (status == .authorizedAlways) {
-            // The user accepted authorization
             statusDescription = "Always"
         } else if (status == .authorizedWhenInUse) {
             statusDescription = "In Use"
@@ -409,10 +410,7 @@ class GeofenceFaker {
         } else if (status == .restricted) {
             statusDescription = "Restricted"
         }
-        log(statusDescription)
-        log("DEFAULTS")
-        log(defaults.string(forKey: "trackEventURL")!)
-        log(defaults.string(forKey: "uid")!)
+
         guard let urlString = defaults.string(forKey: "trackEventURL"), let uid = defaults.string(forKey: "uid"), status != .notDetermined else {
             return
         }
