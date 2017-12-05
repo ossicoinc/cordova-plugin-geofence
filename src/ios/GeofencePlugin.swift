@@ -106,6 +106,9 @@ let defaults = UserDefaults.standard
                 if let locationUpdateURL = data["locationUpdateURL"].string {
                     defaults.set(locationUpdateURL, forKey: "locationUpdateURL")
                 }
+                if let trackEventURL = data["trackEventURL"].string {
+                    defaults.set(trackEventURL, forKey: "trackEventURL")
+                }
             }
 
             DispatchQueue.main.async {
@@ -387,6 +390,44 @@ class GeofenceFaker {
             let region = object
             log("Stoping monitoring region \(region.identifier)")
             locationManager.stopMonitoring(for: region)
+        }
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        log("changed authorization status")
+        var statusDescription = ""
+        if (status == .denied) {
+            // The user denied authorization
+            statusDescription = "Denied"
+        } else if (status == .authorizedAlways) {
+            // The user accepted authorization
+            statusDescription = "Always"
+        } else if (status == .authorizedWhenInUse) {
+            statusDescription = "In Use"
+        } else if (status == .notDetermined) {
+            statusDescription = "Not Determined"
+        } else if (status == .restricted) {
+            statusDescription = "Restricted"
+        }
+        log(statusDescription)
+        log("DEFAULTS")
+        log(defaults.string(forKey: "trackEventURL")!)
+        log(defaults.string(forKey: "uid")!)
+        guard let urlString = defaults.string(forKey: "trackEventURL"), let uid = defaults.string(forKey: "uid"), status != .notDetermined else {
+            return
+        }
+        
+        if let url = URL(string: urlString) {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            
+            let jsonData: JSON = ["user_id": uid, "event": "location-change-access", "properties": ["level": statusDescription]]
+            
+            request.httpBody = try! jsonData.rawData()
+            
+            let task = URLSession.shared.dataTask(with: request, completionHandler: { _ in })
+            task.resume()
         }
     }
 
