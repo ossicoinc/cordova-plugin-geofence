@@ -533,7 +533,8 @@ class GeofenceFaker {
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             
-            let jsonData: JSON = geo["notification"]["data"]
+            var jsonData: JSON = geo["notification"]["data"]
+            jsonData["transitionType"] = geo["transitionType"]
             request.httpBody = try! jsonData.rawData()
 
             let task = session.dataTask(with: request, completionHandler: { (_, response, error) -> Void in
