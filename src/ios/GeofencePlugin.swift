@@ -532,13 +532,10 @@ class GeofenceFaker {
         do {
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            let jsonData: [String : JSON] = geo["notification"]["data"].dictionary!
             
-            var postData:[String : String] = [:]
-            jsonData.forEach { (k, v) in postData[k] = v.rawString() }
-            
-            request.httpBody = try? JSONSerialization.data(withJSONObject: postData)
-            
+            let jsonData: JSON = geo["notification"]["data"]
+            request.httpBody = try! jsonData.rawData()
+
             let task = session.dataTask(with: request, completionHandler: { (_, response, error) -> Void in
                 print("Response from server: \(response), errors: \(error)")
             })
