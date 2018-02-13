@@ -4,6 +4,7 @@ import android.app.IntentService;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
+import android.location.Location;
 import android.util.Log;
 
 import com.google.android.gms.location.Geofence;
@@ -14,7 +15,6 @@ import java.util.List;
 
 public class ReceiveTransitionsIntentService extends IntentService {
     protected static final String GeofenceTransitionIntent = "com.cowbell.cordova.geofence.TRANSITION";
-    protected BeepHelper beepHelper;
     protected GeoNotificationNotifier notifier;
     protected GeoNotificationStore store;
 
@@ -23,7 +23,6 @@ public class ReceiveTransitionsIntentService extends IntentService {
      */
     public ReceiveTransitionsIntentService() {
         super("ReceiveTransitionsIntentService");
-        beepHelper = new BeepHelper();
         store = new GeoNotificationStore(this);
         Logger.setLogger(new Logger(GeofencePlugin.TAG, this, false));
     }
@@ -42,8 +41,8 @@ public class ReceiveTransitionsIntentService extends IntentService {
         logger.log(Log.DEBUG, "ReceiveTransitionsIntentService - onHandleIntent");
         Intent broadcastIntent = new Intent(GeofenceTransitionIntent);
         notifier = new GeoNotificationNotifier(
-            (NotificationManager) this.getSystemService(Context.NOTIFICATION_SERVICE),
-            this
+                (NotificationManager) this.getSystemService(Context.NOTIFICATION_SERVICE),
+                this
         );
 
         // TODO: refactor this, too long
@@ -80,6 +79,8 @@ public class ReceiveTransitionsIntentService extends IntentService {
 
                 if (geoNotifications.size() > 0) {
                     broadcastIntent.putExtra("transitionData", Gson.get().toJson(geoNotifications));
+                    Location curLocation = geofencingEvent.getTriggeringLocation();
+                    broadcastIntent.putExtra("triggerLocation", curLocation);
                     GeofencePlugin.onTransitionReceived(geoNotifications);
                 }
             } else {

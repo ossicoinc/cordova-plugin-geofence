@@ -2,6 +2,7 @@ package com.cowbell.cordova.geofence;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.util.Log;
 import android.Manifest;
@@ -21,6 +22,8 @@ import java.util.List;
 
 public class GeofencePlugin extends CordovaPlugin {
     public static final String TAG = "GeofencePlugin";
+    public static final String PREFS = "GeofencePluginMetadata";
+    public static final String METADATA = "MetadataKey";
     private GeoNotificationManager geoNotificationManager;
     private Context context;
     public static CordovaWebView webView = null;
@@ -85,6 +88,8 @@ public class GeofencePlugin extends CordovaPlugin {
             initialize(callbackContext);
         } else if (action.equals("deviceReady")) {
             deviceReady();
+        } else if (action.equals("saveMetaData")) {
+            GeofencePluginMetadata.setCurrent(context, args.getJSONObject(0));
         } else {
             return false;
         }
@@ -104,7 +109,7 @@ public class GeofencePlugin extends CordovaPlugin {
     public static void onTransitionReceived(List<GeoNotification> notifications) {
         Log.d(TAG, "Transition Event Received!");
         String js = "setTimeout('geofence.onTransitionReceived("
-            + Gson.get().toJson(notifications) + ")',0)";
+                + Gson.get().toJson(notifications) + ")',0)";
         if (webView == null) {
             Log.d(TAG, "Webview is null");
         } else {
@@ -126,8 +131,8 @@ public class GeofencePlugin extends CordovaPlugin {
 
     private void initialize(CallbackContext callbackContext) throws JSONException {
         String[] permissions = {
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-            Manifest.permission.ACCESS_FINE_LOCATION
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_FINE_LOCATION
         };
 
         if (!hasPermissions(permissions)) {
