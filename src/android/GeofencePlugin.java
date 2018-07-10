@@ -88,6 +88,14 @@ public class GeofencePlugin extends CordovaPlugin {
             initialize(callbackContext);
         } else if (action.equals("deviceReady")) {
             deviceReady();
+        } else if (action.equals("hasPermission")) {
+            String[] permissions = {
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            };
+            JSONObject res = new JSONObject();
+            res.put("isEnabled", hasPermissions(permissions));
+            callbackContext.success(res);
         } else if (action.equals("saveMetaData")) {
             GeofencePluginMetadata.setCurrent(context, args.getJSONObject(0));
         } else {

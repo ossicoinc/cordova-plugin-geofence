@@ -28,9 +28,12 @@ func log(_ messages: [String]) {
 let defaults = UserDefaults.standard
 
 @available(iOS 8.0, *)
-@objc(HWPGeofencePlugin) class GeofencePlugin : CDVPlugin {
+@objc(HWPGeofencePlugin) class GeofencePlugin : CDVPlugin, CLLocationManagerDelegate {
     lazy var geoNotificationManager = GeoNotificationManager.sharedInstance
     let priority = DispatchQoS.QoSClass.default
+    var pendingCommand: CDVInvokedUrlCommand?
+    var locationManager: CLLocationManager?
+    var pendingDialog = false
 
     override func pluginInitialize () {
         NotificationCenter.default.addObserver(
@@ -53,30 +56,49 @@ let defaults = UserDefaults.standard
 //        let faker = GeofenceFaker(manager: geoNotificationManager)
 //        faker.start()
 
-        if iOS8 {
-            promptForNotificationPermission()
-        }
+//        if iOS8 {
+//            promptForNotificationPermission()
+//        }
+        self.pendingCommand = command
 
         geoNotificationManager = GeoNotificationManager.sharedInstance
-        geoNotificationManager.registerPermissions()
+        let permsOk = geoNotificationManager.registerPermissions()
 
-        let (ok, warnings, errors) = geoNotificationManager.checkRequirements()
-
-        log(warnings)
-        log(errors)
-
-        let result: CDVPluginResult
-
-        if ok {
-            result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: warnings.joined(separator: "\n"))
+        if (!permsOk && !self.pendingDialog) {
+            self.pendingDialog = true
+            self.locationManager = CLLocationManager()
+            self.locationManager?.delegate = self
         } else {
-            result = CDVPluginResult(
-                status: CDVCommandStatus_ILLEGAL_ACCESS_EXCEPTION,
-                messageAs: (errors + warnings).joined(separator: "\n")
-            )
-        }
+            let (ok, warnings, errors) = geoNotificationManager.checkRequirements()
 
-        commandDelegate!.send(result, callbackId: command.callbackId)
+            log(warnings)
+            log(errors)
+
+            let result: CDVPluginResult
+
+            if ok {
+                result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: warnings.joined(separator: "\n"))
+            } else {
+                result = CDVPluginResult(
+                    status: CDVCommandStatus_ILLEGAL_ACCESS_EXCEPTION,
+                    messageAs: (errors + warnings).joined(separator: "\n")
+                )
+            }
+
+            commandDelegate!.send(result, callbackId: command.callbackId)
+            self.pendingCommand = nil
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        if (status == CLAuthorizationStatus.denied) {
+            // The user denied authorization
+        } else if (status == CLAuthorizationStatus.authorizedAlways) {
+            // The user accepted authorization
+        }
+        if (status != CLAuthorizationStatus.notDetermined && self.pendingCommand != nil) {
+            self.initialize(self.pendingCommand!)
+        }
     }
 
     func deviceReady(_ command: CDVInvokedUrlCommand) {
@@ -87,6 +109,15 @@ let defaults = UserDefaults.standard
     func ping(_ command: CDVInvokedUrlCommand) {
         log("Ping")
         let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK)
+        commandDelegate!.send(pluginResult, callbackId: command.callbackId)
+    }
+
+    func hasPermission(_ command: CDVInvokedUrlCommand) {
+        log("hasPermission")
+        let isOk = CLLocationManager.authorizationStatus() == CLAuthorizationStatus.authorizedAlways
+        var message = [AnyHashable : Any](minimumCapacity: 1)
+        message["isEnabled"] = isOk
+        let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: message)
         commandDelegate!.send(pluginResult, callbackId: command.callbackId)
     }
 
@@ -262,7 +293,8 @@ class GeofenceFaker {
     static let sharedInstance = GeoNotificationManager()
     let locationManager = CLLocationManager()
     let store = GeoNotificationStore()
-    
+    var dialogPending = false
+
     lazy var dateJSONFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
@@ -270,7 +302,7 @@ class GeofenceFaker {
         formatter.locale = NSLocale(localeIdentifier: "en_US_POSIX") as Locale!
         return formatter
     }()
-    
+
     private override init() {
         log("GeoNotificationManager init")
         super.init()
@@ -278,14 +310,23 @@ class GeofenceFaker {
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
     }
 
-    func registerPermissions() {
+    func registerPermissions() -> Bool {
         if iOS8 {
             locationManager.stopUpdatingLocation()
             locationManager.stopMonitoringSignificantLocationChanges()
-            
+
+            let authStatus = CLLocationManager.authorizationStatus()
             locationManager.requestAlwaysAuthorization()
-            locationManager.startMonitoringSignificantLocationChanges()
+            if (authStatus == CLAuthorizationStatus.notDetermined) {
+                // we need to wait for the dialog to return
+                self.dialogPending = true
+                return false;
+            } else {
+                locationManager.startMonitoringSignificantLocationChanges()
+                return true;
+            }
         }
+        return true;
     }
 
     func addOrUpdateGeoNotification(_ geoNotification: JSON) {

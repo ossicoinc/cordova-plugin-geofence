@@ -2,6 +2,10 @@ var exec = require("cordova/exec"),
     channel = require("cordova/channel");
 
 module.exports = {
+
+    hasPermission: function(success, error) {
+        return execPromise(success, error, "GeofencePlugin", "hasPermission", []);
+    },
     /**
      * Initializing geofence plugin
      *
