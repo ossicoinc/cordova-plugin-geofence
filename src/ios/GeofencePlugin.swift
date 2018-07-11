@@ -28,37 +28,28 @@ func log(_ messages: [String]) {
 let defaults = UserDefaults.standard
 
 @available(iOS 8.0, *)
-@objc(HWPGeofencePlugin) class GeofencePlugin : CDVPlugin, CLLocationManagerDelegate {
-    lazy var geofenceManager = GeofenceManager.sharedInstance
+@objc(HWPGeofencePlugin) class GeofencePlugin : CDVPlugin {
     let priority = DispatchQoS.QoSClass.default
-    var pendingCommand: CDVInvokedUrlCommand?
-    var locationManager: CLLocationManager?
-    var pendingDialog = false
-
+    var geofenceManager : GeofenceManager = GeofenceManager.sharedInstance
     override func pluginInitialize () {
-
+        self.geofenceManager = GeofenceManager.sharedInstance
     }
 
     func initialize(_ command: CDVInvokedUrlCommand) {
-        log("Plugin initialization")
-//        let faker = GeofenceFaker(manager: geofenceManager)
-//        faker.start()
+        log("BWLOC Plugin initialization")
+        //        let faker = GeofenceFaker(manager: geofenceManager)
+        //
 
-        self.pendingCommand = command
-
-        geofenceManager = GeofenceManager.sharedInstance
         let permsOk = geofenceManager.registerPermissions()
 
-        if (!permsOk && !self.pendingDialog) {
-            self.pendingDialog = true
-            self.locationManager = CLLocationManager()
-            self.locationManager?.delegate = self
-        } else {
-            let (ok, warnings, errors) = geofenceManager.checkRequirements()
 
-            log(warnings)
-            log(errors)
+        let (ok, warnings, errors) = geofenceManager.checkRequirements()
 
+        log(warnings)
+        log(errors)
+
+
+        DispatchQueue.main.async {
             let result: CDVPluginResult
 
             if ok {
@@ -69,21 +60,9 @@ let defaults = UserDefaults.standard
                     messageAs: (errors + warnings).joined(separator: "\n")
                 )
             }
+            self.commandDelegate!.send(result, callbackId: command.callbackId)
+        }
 
-            commandDelegate!.send(result, callbackId: command.callbackId)
-            self.pendingCommand = nil
-        }
-    }
-
-    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
-        if (status == CLAuthorizationStatus.denied) {
-            // The user denied authorization
-        } else if (status == CLAuthorizationStatus.authorizedAlways) {
-            // The user accepted authorization
-        }
-        if (status != CLAuthorizationStatus.notDetermined && self.pendingCommand != nil) {
-            self.initialize(self.pendingCommand!)
-        }
     }
 
     func deviceReady(_ command: CDVInvokedUrlCommand) {
@@ -241,11 +220,18 @@ class GeofenceFaker {
 }
 
 @available(iOS 8.0, *)
-@objc class GeofenceManager : NSObject, CLLocationManagerDelegate {
+@objc class GeofenceManager : NSObject, CLLocationManagerDelegate, URLSessionDelegate {
     static let sharedInstance = GeofenceManager()
     let locationManager = CLLocationManager()
     let store = GeoNotificationStore()
     var dialogPending = false
+
+    private lazy var urlSession: URLSession = {
+        let config = URLSessionConfiguration.background(withIdentifier: "GeofencingSession")
+        config.isDiscretionary = false
+        config.sessionSendsLaunchEvents = false
+        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
+    }()
 
     lazy var dateJSONFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -256,11 +242,57 @@ class GeofenceFaker {
     }()
 
     private override init() {
-        log("geofenceManager init")
+        log("BWLOC geofenceManager init")
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
     }
+
+    /*:
+     This delegate method is called once when response is recieved. This is the place where
+     you can perform initialization or other related tasks before start recieviing data
+     from response
+     */
+    public func urlSession(_ session: URLSession, dataTask: URLSessionDataTask,
+                           didReceiveResponse response: URLResponse,
+                           completionHandler: (URLSession.ResponseDisposition) -> Void) {
+        log("BWLOC Session received first response!")
+//        self.response = HttpResponse(response: response as! NSHTTPURLResponse)
+        // It is necessary to call completionHandler, otherwise request
+        // will not progress one way or the other
+        completionHandler(URLSession.ResponseDisposition.allow)
+    }
+    /*:
+     This delegate method is called when session task is finished. Check for presence
+     of NSError object to decide if call was successful or not
+     */
+    public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        log("BWLOC sessiontask finished")
+//        // When session task is complete, this delegate method will be called.
+//        // If there is no error then NSError object will nil, otherwise NSError
+//        // will contain information about the error.
+//        if let errorInfo = error{
+//            print("Session error: \(errorInfo.description)")
+//            self.response?.error = error
+//        }
+//        else{
+//            print("Request - complete!")
+//            self.response?.responseUrl = task.response?.URL
+//            self.response?.statusCode = (task.response as! NSHTTPURLResponse).statusCode
+//        }
+//        if let compHandler = completionHandler{
+//            compHandler(self.response!)
+//        }
+    }
+    /*:
+     This delegate method is called when response data is recieved in chunks or
+     in one shot.
+     */
+    public func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceiveData data: Data) {
+//        response?.responseData.appendData(data)
+        log("BWLOC response complete")
+    }
+
 
     func registerPermissions() -> Bool {
         if iOS8 {
@@ -275,6 +307,7 @@ class GeofenceFaker {
                 return false;
             } else {
                 locationManager.startMonitoringSignificantLocationChanges()
+                locationManager.delegate = self
                 return true;
             }
         }
@@ -282,7 +315,7 @@ class GeofenceFaker {
     }
 
     func addOrUpdateGeoNotification(_ geoNotification: JSON) {
-        log("geofenceManager addOrUpdate")
+        log("BWLOC geofenceManager addOrUpdate")
 
         let (_, warnings, errors) = checkRequirements()
 
@@ -353,7 +386,7 @@ class GeofenceFaker {
         store.remove(id)
         let region = getMonitoredRegion(id)
         if (region != nil) {
-            log("Stoping monitoring region \(id)")
+            log("BWLOC Stoping monitoring region \(id)")
             locationManager.stopMonitoring(for: region!)
         }
     }
@@ -362,13 +395,13 @@ class GeofenceFaker {
         store.clear()
         for object in locationManager.monitoredRegions {
             let region = object
-            log("Stoping monitoring region \(region.identifier)")
+            log("BWLOC Stoping monitoring region \(region.identifier)")
             locationManager.stopMonitoring(for: region)
         }
     }
-    
+
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
-        log("changed authorization status")
+        log("BWLOC changed authorization status")
         guard status != .notDetermined else {
             return
         }
@@ -388,7 +421,7 @@ class GeofenceFaker {
         guard let urlString = defaults.string(forKey: "trackEventURL"), let uid = defaults.string(forKey: "uid"), status != .notDetermined else {
             return
         }
-        
+
         if let url = URL(string: urlString) {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
@@ -396,18 +429,18 @@ class GeofenceFaker {
             if let accessToken = defaults.string(forKey: "accessToken") {
                 request.setValue("Bearer" + accessToken, forHTTPHeaderField: "Authorization")
             }
-            
+
             let jsonData: JSON = ["user_id": uid, "event": "location-change-access", "properties": ["level": statusDescription]]
-            
+
             request.httpBody = try! jsonData.rawData()
-            
-            let task = URLSession.shared.dataTask(with: request, completionHandler: { _ in })
+
+            let task = self.urlSession.dataTask(with: request)
             task.resume()
         }
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        log("update location")
+        log("BWLOC update location")
         guard let urlString = defaults.string(forKey: "locationUpdateURL"), let uid = defaults.string(forKey: "uid") else {
             return
         }
@@ -422,47 +455,95 @@ class GeofenceFaker {
             if let lastLocation = locations.last {
                 let timestampString = dateJSONFormatter.string(from: lastLocation.timestamp)
                 let jsonData: JSON = ["location": ["latitude": lastLocation.coordinate.latitude, "longitude": lastLocation.coordinate.longitude], "user_id": uid, "speed": lastLocation.speed, "direction": lastLocation.course, "altitude": lastLocation.altitude, "horizontal_accuracy": lastLocation.horizontalAccuracy, "vertical_accuracy": lastLocation.verticalAccuracy, "timestamp": timestampString]
-                
-                request.httpBody = try! jsonData.rawData()
-                
-                let task = URLSession.shared.dataTask(with: request, completionHandler: { (data, response, error) -> Void in
-                    guard error == nil else {
-                        print("Error: ", error!)
-                        return
-                    }
 
-                    if let data = data, data.count > 0 {
-                        DispatchQueue.global().async {
-                            self.removeAllGeoNotifications()
-                            let geoFencesJson = JSON(data: data)
-                            log("JSON: \(geoFencesJson)")
-                            for geoFenceJson in geoFencesJson {
-                                log("\(geoFenceJson.1)")
-                                self.addOrUpdateGeoNotification(geoFenceJson.1)
-                            }
-                        }
-                    }
-                })
+                request.httpBody = try! jsonData.rawData()
+                let task = self.urlSession.dataTask(with: request)
+//                let task = self.urlSession.dataTask(with: request, completionHandler: { (data, response, error) -> Void in
+//                    guard error == nil else {
+//                        print("Error: ", error!)
+//                        return
+//                    }
+//
+//                    if let data = data, data.count > 0 {
+//                        DispatchQueue.global().async {
+//                            self.removeAllGeoNotifications()
+//                            let geoFencesJson = JSON(data: data)
+//                            log("JSON: \(geoFencesJson)")
+//                            for geoFenceJson in geoFencesJson {
+//                                log("\(geoFenceJson.1)")
+//                                self.addOrUpdateGeoNotification(geoFenceJson.1)
+//                            }
+//                        }
+//                    }
+//                })
                 task.resume()
             }
         }
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        log("fail with error: \(error)")
+        log("BWLOC fail with error: \(error)")
+
+//        guard let urlString = defaults.string(forKey: "trackEventURL") else {
+//            return
+//        }
+//
+//        let url = URL(string: urlString)!
+//        let session = URLSession.shared
+//        var request = URLRequest(url: url)
+//
+//        log("Sending error info to server at url \(url)")
+//        request.httpMethod = "POST"
+//        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+//        if let accessToken = defaults.string(forKey: "accessToken") {
+//            request.setValue("Bearer" + accessToken, forHTTPHeaderField: "Authorization")
+//        }
+//
+//        var jsonData: JSON = ["event": "didFailWithError", "properties": ["error": error.localizedDescription]]
+//        request.httpBody = try! jsonData.rawData()
+//
+//        let task = urlSession.dataTask(with: request, completionHandler: { (_, response, error) -> Void in
+//            print("Response from server: \(response), errors: \(error)")
+//        })
+//
+//        task.resume()
     }
 
     func locationManager(_ manager: CLLocationManager, didFinishDeferredUpdatesWithError error: Error?) {
-        log("deferred fail error: \(error)")
+        log("BWLOC deferred fail error: \(error?.localizedDescription)")
+
+//        guard let urlString = defaults.string(forKey: "trackEventURL") else {
+//            return
+//        }
+//
+//        let url = URL(string: urlString)!
+//        let session = URLSession.shared
+//        var request = URLRequest(url: url)
+//
+//        log("Sending error info to server at url \(url)")
+//        request.httpMethod = "POST"
+//        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+//        if let accessToken = defaults.string(forKey: "accessToken") {
+//            request.setValue("Bearer" + accessToken, forHTTPHeaderField: "Authorization")
+//        }
+//
+//        var jsonData: JSON = ["event": "didFinishDeferredUpdatesWithError", "properties": ["error": error?.localizedDescription]]
+//        request.httpBody = try! jsonData.rawData()
+//
+//        let task = urlSession.dataTask(with: request, completionHandler: { (_, response, error) -> Void in
+//            print("Response from server: \(response), errors: \(error)")
+//        })
+//
+//        task.resume()
     }
 
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
-        log("Entering region \(region.identifier)")
+        log("BWLOC Entering region \(region.identifier)")
         handleTransition(region, transitionType: 1)
     }
 
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
-        log("Exiting region \(region.identifier)")
+        log("BWLOC Exiting region \(region.identifier)")
         handleTransition(region, transitionType: 2)
     }
 
@@ -472,56 +553,54 @@ class GeofenceFaker {
             let lng = (region as! CLCircularRegion).center.longitude
             let radius = (region as! CLCircularRegion).radius
 
-            log("Starting monitoring for region \(region) lat \(lat) lng \(lng) of radius \(radius)")
+            log("BWLOC Starting monitoring for region \(region) lat \(lat) lng \(lng) of radius \(radius)")
+
+
         }
     }
 
     func locationManager(_ manager: CLLocationManager, didDetermineState state: CLRegionState, for region: CLRegion) {
-        log("State for region " + region.identifier)
+        log("BWLOC State for region " + region.identifier)
     }
 
     func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
-        log("Monitoring region " + region!.identifier + " failed " + error.localizedDescription)
+        log("BWLOC Monitoring region " + region!.identifier + " failed " + error.localizedDescription)
     }
 
     func handleTransition(_ region: CLRegion!, transitionType: Int) {
         if var geoNotification = store.findById(region.identifier) {
             geoNotification["transitionType"].int = transitionType
-            
+
             sendTransitionToServer(geoNotification)
         }
     }
 
     func sendTransitionToServer(_ geo: JSON) {
-        log("Looking for url to send transition info to server \(geo)")
+        log("BWLOC Looking for url to send transition info to server \(geo)")
         guard let urlString = defaults.string(forKey: "geoTransitionURL") else {
             return
         }
 
         let url = URL(string: urlString)!
-        let session = URLSession.shared
+        let session = self.urlSession
         var request = URLRequest(url: url)
 
-        do {
-            log("Sending transition info to server at url \(url)")
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            if let accessToken = defaults.string(forKey: "accessToken") {
-                request.setValue("Bearer" + accessToken, forHTTPHeaderField: "Authorization")
-            }
-
-            var jsonData: JSON = geo
-            jsonData["transitionType"] = geo["transitionType"]
-            request.httpBody = try! jsonData.rawData()
-
-            let task = session.dataTask(with: request, completionHandler: { (_, response, error) -> Void in
-                print("Response from server: \(response), errors: \(error)")
-            })
-
-            task.resume()
-        } catch {
-            print("error")
+        log("BWLOC Sending transition info to server at url \(url)")
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let accessToken = defaults.string(forKey: "accessToken") {
+            request.setValue("Bearer" + accessToken, forHTTPHeaderField: "Authorization")
         }
+
+        var jsonData: JSON = geo
+        jsonData["transitionType"] = geo["transitionType"]
+        request.httpBody = try! jsonData.rawData()
+
+        let task = urlSession.dataTask(with: request, completionHandler: { (_, response, error) -> Void in
+            print("BWLOC Response from server: \(response), errors: \(error)")
+        })
+
+        task.resume()
     }
 }
 
@@ -561,7 +640,7 @@ class GeoNotificationStore {
     func add(_ geoNotification: JSON) {
         let id = geoNotification["id"].stringValue
         let err = SD.executeChange("INSERT INTO GeoNotifications (Id, Data) VALUES(?, ?)",
-            withArgs: [id as AnyObject, geoNotification.description as AnyObject])
+                                   withArgs: [id as AnyObject, geoNotification.description as AnyObject])
 
         if err != nil {
             log("Error while adding \(id) GeoNotification: \(err)")
@@ -571,7 +650,7 @@ class GeoNotificationStore {
     func update(_ geoNotification: JSON) {
         let id = geoNotification["id"].stringValue
         let err = SD.executeChange("UPDATE GeoNotifications SET Data = ? WHERE Id = ?",
-            withArgs: [geoNotification.description as AnyObject, id as AnyObject])
+                                   withArgs: [geoNotification.description as AnyObject, id as AnyObject])
 
         if err != nil {
             log("Error while adding \(id) GeoNotification: \(err)")
