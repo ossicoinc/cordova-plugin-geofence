@@ -30,9 +30,10 @@ let defaults = UserDefaults.standard
 @available(iOS 8.0, *)
 @objc(HWPGeofencePlugin) class GeofencePlugin : CDVPlugin {
     let priority = DispatchQoS.QoSClass.default
-    var geofenceManager : GeofenceManager = GeofenceManager.sharedInstance
     override func pluginInitialize () {
-        self.geofenceManager = GeofenceManager.sharedInstance
+        DispatchQueue.main.async {
+            let (ok, warnings, errors) = GeofenceManager.sharedInstance.checkRequirements()
+        }
     }
 
     func initialize(_ command: CDVInvokedUrlCommand) {
@@ -40,16 +41,19 @@ let defaults = UserDefaults.standard
         //        let faker = GeofenceFaker(manager: geofenceManager)
         //
 
-        let permsOk = geofenceManager.registerPermissions()
 
-
-        let (ok, warnings, errors) = geofenceManager.checkRequirements()
-
-        log(warnings)
-        log(errors)
 
 
         DispatchQueue.main.async {
+
+            let permsOk = GeofenceManager.sharedInstance.registerPermissions()
+
+
+            let (ok, warnings, errors) = GeofenceManager.sharedInstance.checkRequirements()
+
+            log(warnings)
+            log(errors)
+
             let result: CDVPluginResult
 
             if ok {
@@ -120,7 +124,7 @@ let defaults = UserDefaults.standard
         DispatchQueue.global(qos: priority).async {
             // do some task
             for geo in command.arguments {
-                self.geofenceManager.addOrUpdateGeoNotification(JSON(geo))
+                GeofenceManager.sharedInstance.addOrUpdateGeoNotification(JSON(geo))
             }
             DispatchQueue.main.async {
                 let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK)
@@ -131,7 +135,7 @@ let defaults = UserDefaults.standard
 
     func getWatched(_ command: CDVInvokedUrlCommand) {
         DispatchQueue.global(qos: priority).async {
-            let watched = self.geofenceManager.getWatchedGeoNotifications()!
+            let watched = GeofenceManager.sharedInstance.getWatchedGeoNotifications()!
             let watchedJsonString = watched.description
             DispatchQueue.main.async {
                 let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: watchedJsonString)
@@ -143,7 +147,7 @@ let defaults = UserDefaults.standard
     func remove(_ command: CDVInvokedUrlCommand) {
         DispatchQueue.global(qos: priority).async {
             for id in command.arguments {
-                self.geofenceManager.removeGeoNotification(id as! String)
+                GeofenceManager.sharedInstance.removeGeoNotification(id as! String)
             }
             DispatchQueue.main.async {
                 let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK)
@@ -154,7 +158,7 @@ let defaults = UserDefaults.standard
 
     func removeAll(_ command: CDVInvokedUrlCommand) {
         DispatchQueue.global(qos: priority).async {
-            self.geofenceManager.removeAllGeoNotifications()
+            GeofenceManager.sharedInstance.removeAllGeoNotifications()
             DispatchQueue.main.async {
                 let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK)
                 self.commandDelegate!.send(pluginResult, callbackId: command.callbackId)
@@ -192,17 +196,17 @@ class GeofenceFaker {
                 let notify = arc4random_uniform(4)
                 if notify == 0 {
                     log("FAKER notify chosen, need to pick up some region")
-                    var geos = self.geofenceManager.getWatchedGeoNotifications()!
+                    var geos = GeofenceManager.sharedInstance.getWatchedGeoNotifications()!
                     if geos.count > 0 {
                         //WTF Swift??
                         let index = arc4random_uniform(UInt32(geos.count))
                         let geo = geos[Int(index)]
                         let id = geo["id"].stringValue
                         DispatchQueue.main.async {
-                            if let region = self.geofenceManager.getMonitoredRegion(id) {
+                            if let region = GeofenceManager.sharedInstance.getMonitoredRegion(id) {
                                 log("FAKER Trigger didEnterRegion")
-                                self.geofenceManager.locationManager(
-                                    self.geofenceManager.locationManager,
+                                GeofenceManager.sharedInstance.locationManager(
+                                    GeofenceManager.sharedInstance.locationManager,
                                     didEnterRegion: region
                                 )
                             }
@@ -296,8 +300,8 @@ class GeofenceFaker {
 
     func registerPermissions() -> Bool {
         if iOS8 {
-            locationManager.stopUpdatingLocation()
-            locationManager.stopMonitoringSignificantLocationChanges()
+            //locationManager.stopUpdatingLocation()
+            //locationManager.stopMonitoringSignificantLocationChanges()
 
             let authStatus = CLLocationManager.authorizationStatus()
             locationManager.requestAlwaysAuthorization()
@@ -306,7 +310,7 @@ class GeofenceFaker {
                 self.dialogPending = true
                 return false;
             } else {
-                locationManager.startMonitoringSignificantLocationChanges()
+                //locationManager.startMonitoringSignificantLocationChanges()
                 locationManager.delegate = self
                 return true;
             }
@@ -393,10 +397,13 @@ class GeofenceFaker {
 
     func removeAllGeoNotifications() {
         store.clear()
-        for object in locationManager.monitoredRegions {
-            let region = object
-            log("BWLOC Stoping monitoring region \(region.identifier)")
-            locationManager.stopMonitoring(for: region)
+        let (ok, _, _) = GeofenceManager.sharedInstance.checkRequirements()
+        if (ok) {
+            for object in locationManager.monitoredRegions {
+                let region = object
+                log("BWLOC Stoping monitoring region \(region.identifier)")
+                locationManager.stopMonitoring(for: region)
+            }
         }
     }
 
@@ -582,7 +589,6 @@ class GeofenceFaker {
         }
 
         let url = URL(string: urlString)!
-        let session = self.urlSession
         var request = URLRequest(url: url)
 
         log("BWLOC Sending transition info to server at url \(url)")
@@ -596,10 +602,7 @@ class GeofenceFaker {
         jsonData["transitionType"] = geo["transitionType"]
         request.httpBody = try! jsonData.rawData()
 
-        let task = urlSession.dataTask(with: request, completionHandler: { (_, response, error) -> Void in
-            print("BWLOC Response from server: \(response), errors: \(error)")
-        })
-
+        let task = urlSession.dataTask(with: request)
         task.resume()
     }
 }
