@@ -11,15 +11,15 @@ public class ServerNotification {
     @Expose public double latitude;
     @Expose public double longitude;
     @Expose public float accuracy;
-    @Expose public GeoNotification notification;
     @Expose public int transitionType;
+    @Expose public String id;
 
     public ServerNotification(Location triggerLocation, GeoNotification geoNotif) {
         this.latitude = triggerLocation.getLatitude();
         this.longitude = triggerLocation.getLongitude();
         this.accuracy = triggerLocation.getAccuracy();
-        this.notification = geoNotif;
         this.transitionType = geoNotif.transitionType;
+        this.id = geoNotif.id;
     }
 
     public String toJson() {
