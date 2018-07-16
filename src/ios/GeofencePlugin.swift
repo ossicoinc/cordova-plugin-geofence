@@ -29,6 +29,7 @@ let defaults = UserDefaults.standard
 
 @available(iOS 8.0, *)
 @objc(HWPGeofencePlugin) class GeofencePlugin : CDVPlugin {
+    lazy var geoNotificationManager = GeofenceManager.sharedInstance
     let priority = DispatchQoS.QoSClass.default
     override func pluginInitialize () {
         DispatchQueue.main.async {
@@ -224,11 +225,12 @@ class GeofenceFaker {
 }
 
 @available(iOS 8.0, *)
-@objc class GeofenceManager : NSObject, CLLocationManagerDelegate, URLSessionDelegate {
+@objc class GeofenceManager : NSObject, CLLocationManagerDelegate, URLSessionDataDelegate {
     static let sharedInstance = GeofenceManager()
     let locationManager = CLLocationManager()
     let store = GeoNotificationStore()
     var dialogPending = false
+    var backgroundTask: UIBackgroundTaskIdentifier = UIBackgroundTaskInvalid
 
     private lazy var urlSession: URLSession = {
         let config = URLSessionConfiguration.background(withIdentifier: "GeofencingSession")
@@ -257,43 +259,31 @@ class GeofenceFaker {
      you can perform initialization or other related tasks before start recieviing data
      from response
      */
-    public func urlSession(_ session: URLSession, dataTask: URLSessionDataTask,
-                           didReceiveResponse response: URLResponse,
-                           completionHandler: (URLSession.ResponseDisposition) -> Void) {
+    @objc(URLSession:dataTask:didReceiveResponse:completionHandler:)
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
         log("BWLOC Session received first response!")
-//        self.response = HttpResponse(response: response as! NSHTTPURLResponse)
+        //        self.response = HttpResponse(response: response as! NSHTTPURLResponse)
         // It is necessary to call completionHandler, otherwise request
         // will not progress one way or the other
         completionHandler(URLSession.ResponseDisposition.allow)
+        if (backgroundTask != UIBackgroundTaskInvalid) {
+            UIApplication.shared.endBackgroundTask(backgroundTask)
+            self.backgroundTask = UIBackgroundTaskInvalid
+        }
     }
+
     /*:
      This delegate method is called when session task is finished. Check for presence
      of NSError object to decide if call was successful or not
      */
-    public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         log("BWLOC sessiontask finished")
-//        // When session task is complete, this delegate method will be called.
-//        // If there is no error then NSError object will nil, otherwise NSError
-//        // will contain information about the error.
-//        if let errorInfo = error{
-//            print("Session error: \(errorInfo.description)")
-//            self.response?.error = error
-//        }
-//        else{
-//            print("Request - complete!")
-//            self.response?.responseUrl = task.response?.URL
-//            self.response?.statusCode = (task.response as! NSHTTPURLResponse).statusCode
-//        }
-//        if let compHandler = completionHandler{
-//            compHandler(self.response!)
-//        }
     }
     /*:
      This delegate method is called when response data is recieved in chunks or
      in one shot.
      */
-    public func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceiveData data: Data) {
-//        response?.responseData.appendData(data)
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         log("BWLOC response complete")
     }
 
@@ -441,8 +431,15 @@ class GeofenceFaker {
 
             request.httpBody = try! jsonData.rawData()
 
-            let task = self.urlSession.dataTask(with: request)
-            task.resume()
+            if (self.backgroundTask == UIBackgroundTaskInvalid) {
+                self.backgroundTask = UIApplication.shared.beginBackgroundTask(expirationHandler: {
+                    log("BWLOC Background task expired handler called.");
+                });
+                let task = self.urlSession.dataTask(with: request)
+                task.resume()
+            } else {
+                log("BWLOC request already in progress, not starting this one")
+            }
         }
     }
 
@@ -464,7 +461,7 @@ class GeofenceFaker {
                 let jsonData: JSON = ["location": ["latitude": lastLocation.coordinate.latitude, "longitude": lastLocation.coordinate.longitude], "user_id": uid, "speed": lastLocation.speed, "direction": lastLocation.course, "altitude": lastLocation.altitude, "horizontal_accuracy": lastLocation.horizontalAccuracy, "vertical_accuracy": lastLocation.verticalAccuracy, "timestamp": timestampString]
 
                 request.httpBody = try! jsonData.rawData()
-                let task = self.urlSession.dataTask(with: request)
+
 //                let task = self.urlSession.dataTask(with: request, completionHandler: { (data, response, error) -> Void in
 //                    guard error == nil else {
 //                        print("Error: ", error!)
@@ -483,7 +480,16 @@ class GeofenceFaker {
 //                        }
 //                    }
 //                })
-                task.resume()
+
+                if (self.backgroundTask == UIBackgroundTaskInvalid) {
+                    self.backgroundTask = UIApplication.shared.beginBackgroundTask(expirationHandler: {
+                        log("BWLOC Background task expired handler called.");
+                    });
+                    let task = self.urlSession.dataTask(with: request)
+                    task.resume()
+                } else {
+                    log("BWLOC request already in progress, not starting this one")
+                }
             }
         }
     }
@@ -602,8 +608,15 @@ class GeofenceFaker {
         jsonData["transitionType"] = geo["transitionType"]
         request.httpBody = try! jsonData.rawData()
 
-        let task = urlSession.dataTask(with: request)
-        task.resume()
+        if (self.backgroundTask == UIBackgroundTaskInvalid) {
+            self.backgroundTask = UIApplication.shared.beginBackgroundTask(expirationHandler: {
+                log("BWLOC Background task expired handler called.");
+            });
+            let task = urlSession.dataTask(with: request)
+            task.resume()
+        } else {
+            log("BWLOC URL request already in progress, skipping this one...")
+        }
     }
 }
 
